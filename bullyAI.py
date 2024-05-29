@@ -103,7 +103,10 @@ def capture_screen_image():
     image_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
     return image_base64
 
-def process_image(cap, caption_text, use_openai=False):
+def process_image(cap, caption_text, use_openai=False, conversation_history=None):
+    if conversation_history is None:
+        conversation_history = []
+
     image_b64 = capture_webcam_image(cap)
     screen_b64 = capture_screen_image()
 
@@ -126,19 +129,26 @@ def process_image(cap, caption_text, use_openai=False):
         # Initialize Groq client
         client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
-        # Create a chat completion with the generated caption
+        # Add the new user message to the conversation history
+        conversation_history.append({
+            "role": "user",
+            "content": f"You are David Attenborough. Describe the importance of what you see in this image in max 2 sentences be very mean and very rude. This is what you see through web cam and computer screen: {combined_caption}"
+        })
+
+        # Create a chat completion with the conversation history
         chat_completion = client.chat.completions.create(
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"You are David Attenborough. Describe the importance of what you see in this image in max 2 sentences be very mean and very rude. This is what you see through web cam and computer screen: {combined_caption}"
-                }
-            ],
+            messages=conversation_history,
             model="llama3-8b-8192",
         )
 
         # Extract the response from Groq API
         narrative_response = chat_completion.choices[0].message.content
+
+        # Add the assistant's response to the conversation history
+        conversation_history.append({
+            "role": "assistant",
+            "content": narrative_response
+        })
 
         # Print the Groq response
         print(f"Groq Response: {narrative_response}")
