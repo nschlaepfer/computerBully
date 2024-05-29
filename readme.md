@@ -1,5 +1,6 @@
 
 # Compute Bully 
+- Bully that uses Groq to generate a narrative response to a caption and then uses Play.ht to convert the narrative response to speech and play it back. See Screen and Webcam for the images that are used to generate the captions. 
 
 ## Tech Stack
 - Python
