@@ -30,6 +30,8 @@ import io
 import os
 from groq import Groq
 import dotenv
+from openai import OpenAI
+import curses
 
 dotenv.load_dotenv()
 
@@ -43,16 +45,43 @@ def prompt_func(data):
     content_parts = [image_part, {"type": "text", "text": text}]
     return [HumanMessage(content=content_parts)]
 
-def generate_image_caption(image_b64):
+def generate_image_caption(image_b64, use_openai=False):
     if not image_b64:
         return "Failed to process image for captioning."
-    llm = ChatOllama(model="0ssamaak0/xtuner-llava:phi3-mini-int4", temperature=1)
-    chain = prompt_func | llm | StrOutputParser()
-    query_chain = chain.invoke(
-        {"text": "You are David Attenborough and describe the image. With only 1 sentence", "image": image_b64}
-        # {"text": "Describe the image. IN spanish... only 1 sentence", "image": image_b64}
-    )
-    return query_chain
+    
+    if use_openai:
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}
+                        },
+                        {
+                            "type": "text",
+                            "text": "Please describe the individual or the main subject in this image in detail."
+                        }
+                    ]
+                }
+            ],
+            temperature=1,
+            max_tokens=256,
+            top_p=1,
+            frequency_penalty=0,
+            presence_penalty=0
+        )
+        return response.choices[0].message.content
+    else:
+        llm = ChatOllama(model="0ssamaak0/xtuner-llava:phi3-mini-int4", temperature=0.1)
+        chain = prompt_func | llm | StrOutputParser()
+        query_chain = chain.invoke(
+            {"text": "Describe the individual or the main subject in this image in detail.", "image": image_b64}
+        )
+        return query_chain
 
 def capture_webcam_image(cap):
     success, frame = cap.read()
@@ -67,10 +96,10 @@ def capture_webcam_image(cap):
         return None
 
 
-def process_image(cap, caption_text):
+def process_image(cap, caption_text, use_openai=False):
     image_b64 = capture_webcam_image(cap)
     if image_b64:
-        caption = generate_image_caption(image_b64)
+        caption = generate_image_caption(image_b64, use_openai)
         logging.info(f"Caption: {caption}")
         caption_text.append(caption)
 
@@ -135,17 +164,44 @@ def process_image(cap, caption_text):
     else:
         logging.warning("Failed to capture image from webcam.")
 
-def periodic_image_capture(cap, caption_text):
+def periodic_image_capture(cap, caption_text, use_openai=False):
     while True:
-        process_image(cap, caption_text)
+        process_image(cap, caption_text, use_openai)
         time.sleep(1)  # Sleep for 10 seconds
+
+def select_model(stdscr):
+    curses.curs_set(0)
+    stdscr.clear()
+    stdscr.addstr(0, 0, "Select the model to use:")
+    options = ["OpenAI", "Local VLLM"]
+    current_option = 0
+
+    while True:
+        for idx, option in enumerate(options):
+            if idx == current_option:
+                stdscr.addstr(idx + 1, 0, f"> {option}", curses.A_REVERSE)
+            else:
+                stdscr.addstr(idx + 1, 0, f"  {option}")
+
+        key = stdscr.getch()
+
+        if key == curses.KEY_UP and current_option > 0:
+            current_option -= 1
+        elif key == curses.KEY_DOWN and current_option < len(options) - 1:
+            current_option += 1
+        elif key == curses.KEY_ENTER or key in [10, 13]:
+            return current_option
 
 def main():
     cap = cv2.VideoCapture(0)  # 0 is typically the default camera
     caption_text = []
 
+    # Initialize curses and get user selection
+    selected_option = curses.wrapper(select_model)
+    use_openai = (selected_option == 0)
+
     # Start the periodic capture in a separate thread
-    thread = threading.Thread(target=periodic_image_capture, args=(cap, caption_text))
+    thread = threading.Thread(target=periodic_image_capture, args=(cap, caption_text, use_openai))
     thread.start()
 
     # Open a window to display the camera preview
