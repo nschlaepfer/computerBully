@@ -32,6 +32,7 @@ from groq import Groq
 import dotenv
 from openai import OpenAI
 import curses
+import pyautogui
 
 dotenv.load_dotenv()
 
@@ -95,13 +96,32 @@ def capture_webcam_image(cap):
     else:
         return None
 
+def capture_screen_image():
+    screenshot = pyautogui.screenshot()
+    buffered = BytesIO()
+    screenshot.save(buffered, format="PNG")
+    image_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+    return image_base64
 
 def process_image(cap, caption_text, use_openai=False):
     image_b64 = capture_webcam_image(cap)
+    screen_b64 = capture_screen_image()
+
     if image_b64:
         caption = generate_image_caption(image_b64, use_openai)
         logging.info(f"Caption: {caption}")
         caption_text.append(caption)
+
+        if screen_b64:
+            screen_caption = generate_image_caption(screen_b64, use_openai)
+            logging.info(f"Screen Caption: {screen_caption}")
+            caption_text.append(screen_caption)
+            combined_caption = f"Webcam: {caption} | Screen: {screen_caption}"
+        else:
+            combined_caption = caption
+
+        # Print the combined caption being sent to Groq
+        print(f"Sending to Groq: {combined_caption}")
 
         # Initialize Groq client
         client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
@@ -111,7 +131,7 @@ def process_image(cap, caption_text, use_openai=False):
             messages=[
                 {
                     "role": "user",
-                    "content": f"You are David Attenborough. Describe the importance of what you see in this image in max 2 sentences be very mean and very rude: {caption}"
+                    "content": f"You are David Attenborough. Describe the importance of what you see in this image in max 2 sentences be very mean and very rude. This is what you see through web cam and computer screen: {combined_caption}"
                 }
             ],
             model="llama3-8b-8192",
@@ -119,6 +139,9 @@ def process_image(cap, caption_text, use_openai=False):
 
         # Extract the response from Groq API
         narrative_response = chat_completion.choices[0].message.content
+
+        # Print the Groq response
+        print(f"Groq Response: {narrative_response}")
         logging.info(f"Narrative Response: {narrative_response}")
 
         # PlayHT API integration for TTS
@@ -167,7 +190,10 @@ def process_image(cap, caption_text, use_openai=False):
 def periodic_image_capture(cap, caption_text, use_openai=False):
     while True:
         process_image(cap, caption_text, use_openai)
-        time.sleep(1)  # Sleep for 10 seconds
+        if use_openai:
+            time.sleep(0.5)  # Take screenshots every 0.5 seconds when using OpenAI
+        else:
+            time.sleep(1)  # Default interval for other models
 
 def select_model(stdscr):
     curses.curs_set(0)
