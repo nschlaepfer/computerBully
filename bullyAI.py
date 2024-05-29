@@ -132,8 +132,8 @@ def process_image(cap, caption_text, use_openai=False):
         headers = {
             "accept": "text/event-stream",
             "content-type": "application/json",
-            "AUTHORIZATION": "6d71c98920234fc288c4352f7114b9cc",
-            "X-USER-ID": "BXlIDcwTYMZK7GkD4mIjei8XTR32"
+            "AUTHORIZATION": os.getenv("PLAYHT_AUTHORIZATION"),
+            "X-USER-ID": os.getenv("PLAYHT_USER_ID")
         }
         response = requests.post(url, json=payload, headers=headers, stream=True)
         
